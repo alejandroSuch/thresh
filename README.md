@@ -189,3 +189,11 @@ You don't need the `--llm` tie-break here: the MCP caller is itself an LLM. Call
 ## Not yet (roadmap)
 
 Dedicated `--board` selector (Agile API: columns/sprints), won't-do rationale, Linear / GitHub Issues adapters.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+## Support
+
+If thresh saves you time, you can [buy me a coffee](https://buymeacoffee.com/alejandrosuch) ☕.
