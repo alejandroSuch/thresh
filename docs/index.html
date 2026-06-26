@@ -79,6 +79,25 @@
   .term .c-key{color:var(--accent-2)}
   .term .c-pink{color:var(--pink)}
 
+  /* claude code chat */
+  .chat{padding:18px;display:flex;flex-direction:column;gap:14px}
+  .chat .msg{font-size:14.5px;max-width:92%}
+  .chat .msg.user{align-self:flex-end;background:#16202b;border:1px solid var(--border);border-radius:12px 12px 4px 12px;padding:10px 14px}
+  .chat .msg.bot{align-self:flex-start;color:var(--fg)}
+  .chat .msg.bot .intro{color:var(--muted);font-size:14px;margin-bottom:12px}
+  .chat .tool{align-self:flex-start;font-family:var(--mono);font-size:12.5px;color:var(--faint);border-left:2px solid var(--accent-2);background:rgba(56,189,248,.06);border-radius:0 6px 6px 0;padding:7px 12px;max-width:92%;overflow-x:auto;white-space:nowrap}
+  .chat .tool b{color:var(--accent-2);font-weight:600}
+  .chat .tool .ok{color:var(--accent)}
+  .rank{display:flex;flex-direction:column;gap:13px}
+  .rank .it{display:flex;gap:10px;align-items:baseline}
+  .rank .n{font-family:var(--mono);color:var(--faint);flex:0 0 auto}
+  .rank .body .ttl{line-height:1.4}
+  .rank .k{font-family:var(--mono);color:var(--accent);font-size:13.5px}
+  .rank .why{color:var(--muted);font-size:13px;margin-top:2px}
+  .rank .why .bk{font-family:var(--mono);color:var(--accent-2)}
+  .rank .why .bug{color:var(--warn);font-weight:600}
+  .chat .skip{color:var(--faint);font-size:13px;margin-top:14px;border-top:1px dashed var(--border);padding-top:12px}
+
   /* feature list */
   .feat{display:grid;grid-template-columns:1fr 1fr;gap:16px 36px}
   .feat .f{display:flex;gap:12px}
@@ -176,6 +195,36 @@
       <h3>MCP server</h3>
       <p>Exposes discovery and per-issue actions as tools Claude Code can call. The calling model does the re-rank.</p>
       <div class="kbd">thresh --mcp</div>
+    </div>
+  </div>
+</section>
+
+<section id="agent" class="wrap">
+  <h2>It drives your coding agent</h2>
+  <p class="sub">Run <code>thresh --mcp</code> and Claude Code can triage the backlog itself, then act on it: assign, transition, comment. The calling model does the re-rank in its own context.</p>
+  <div class="term">
+    <div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="t">Claude Code · thresh (mcp)</span></div>
+    <div class="chat">
+      <div class="msg user">What should I pick up next in <strong>ABC</strong>?</div>
+      <div class="tool">→ <b>mcp__thresh__discover_backlog</b>&nbsp;&nbsp;{ "scope": "ABC" }&nbsp;&nbsp;&nbsp;<span class="ok">← 101 issues · ranked</span></div>
+      <div class="msg bot">
+        <div class="intro">Top picks, by impact (not just age or status):</div>
+        <div class="rank">
+          <div class="it"><span class="n">1.</span><div class="body">
+            <div class="ttl"><span class="k">ABC-417</span> &nbsp;Freeze the JSON output contract: schema snapshot + CI gate</div>
+            <div class="why">In Progress · <span class="bk">blocks ABC-418, ABC-419</span> → foundational, unblocks 2. Live committed work.</div>
+          </div></div>
+          <div class="it"><span class="n">2.</span><div class="body">
+            <div class="ttl"><span class="k">ABC-370</span> &nbsp;Backup reuse loses applied state on re-sync</div>
+            <div class="why"><span class="bug">broken-flow bug</span>: rollback targets the pre-sync state and silently drops the applied work. Worth pulling in.</div>
+          </div></div>
+          <div class="it"><span class="n">3.</span><div class="body">
+            <div class="ttl"><span class="k">ABC-151</span> &nbsp;Separate evaluator agent with 3-tier confidence</div>
+            <div class="why">Selected for Development · <span class="bk">blocks ABC-364</span> → the unblocker for the validator-tier work.</div>
+          </div></div>
+        </div>
+        <div class="skip">Ranked down: <span style="font-family:var(--mono)">ABC-66</span> (zombie: "Selected" 133d), telemetry-only nits, and backlog items with no momentum. Want me to <strong>self-assign ABC-417</strong> and move it to In Progress?</div>
+      </div>
     </div>
   </div>
 </section>
