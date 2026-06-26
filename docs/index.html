@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>thresh — impact-ranked Jira backlog discovery</title>
+<meta name="description" content="thresh points at a Jira scope and surfaces the pending, actionable issues ranked by impact. CLI, TUI, and an MCP server for Claude Code.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Cpath d='M8 11h16M8 17h11M8 23h6' stroke='%2334d399' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#11161d; --panel-2:#0e131a; --border:#1e2730;
+    --fg:#e6edf3; --muted:#8b98a5; --faint:#5b6672;
+    --accent:#34d399; --accent-2:#38bdf8; --warn:#f5a623; --pink:#f471b5;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+  body{background-image:radial-gradient(900px 500px at 80% -10%,rgba(52,211,153,.10),transparent 60%),radial-gradient(700px 400px at -10% 0%,rgba(56,189,248,.08),transparent 55%)}
+  a{color:var(--accent-2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:980px;margin:0 auto;padding:0 24px}
+  code,kbd{font-family:var(--mono)}
+
+  /* nav */
+  nav{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;max-width:980px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.02em}
+  .brand .logo{width:26px;height:26px}
+  .nav-links{display:flex;gap:22px;align-items:center;font-size:14px}
+  .nav-links a{color:var(--muted)}
+  .nav-links a:hover{color:var(--fg);text-decoration:none}
+
+  /* hero */
+  header{padding:56px 0 28px}
+  .tag{display:inline-block;font-family:var(--mono);font-size:12.5px;color:var(--accent);border:1px solid var(--border);background:var(--panel);border-radius:999px;padding:5px 12px;margin-bottom:22px}
+  h1{font-size:clamp(40px,8vw,76px);line-height:1;margin:0 0 18px;letter-spacing:-.04em;font-weight:800}
+  h1 .dot{color:var(--accent)}
+  .lede{font-size:clamp(17px,2.6vw,21px);color:var(--muted);max-width:660px;margin:0 0 30px}
+  .lede strong{color:var(--fg);font-weight:600}
+  .cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:30px}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:15px;padding:11px 18px;border-radius:10px;border:1px solid transparent;transition:.15s}
+  .btn.primary{background:var(--accent);color:#06281d}
+  .btn.primary:hover{filter:brightness(1.08);text-decoration:none}
+  .btn.ghost{background:var(--panel);border-color:var(--border);color:var(--fg)}
+  .btn.ghost:hover{border-color:var(--faint);text-decoration:none}
+
+  /* copy box */
+  .copy{display:flex;align-items:center;gap:12px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:14px;max-width:560px}
+  .copy .pmt{color:var(--accent)}
+  .copy code{flex:1;overflow-x:auto;white-space:nowrap;color:var(--fg)}
+  .copy button{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:12px;font-family:var(--mono)}
+  .copy button:hover{color:var(--fg);border-color:var(--faint)}
+
+  /* sections */
+  section{padding:46px 0;border-top:1px solid var(--border)}
+  h2{font-size:clamp(24px,4vw,32px);letter-spacing:-.03em;margin:0 0 8px}
+  .sub{color:var(--muted);margin:0 0 28px;max-width:640px}
+
+  /* mode cards */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px}
+  .card .ic{font-family:var(--mono);font-size:13px;color:var(--accent);margin-bottom:10px}
+  .card h3{margin:0 0 8px;font-size:18px;letter-spacing:-.01em}
+  .card p{margin:0;color:var(--muted);font-size:14.5px}
+  .card .kbd{margin-top:14px;font-family:var(--mono);font-size:12.5px;color:var(--faint)}
+
+  /* terminal */
+  .term{background:var(--panel-2);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  .term .bar{display:flex;align-items:center;gap:7px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .term .bar i{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .term .bar .t{margin-left:10px;font-family:var(--mono);font-size:12px;color:var(--faint)}
+  .term pre{margin:0;padding:18px 18px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.7;color:var(--fg)}
+  .term .c-cmd{color:var(--accent)}
+  .term .c-mut{color:var(--faint)}
+  .term .c-warn{color:var(--warn)}
+  .term .c-key{color:var(--accent-2)}
+  .term .c-pink{color:var(--pink)}
+
+  /* feature list */
+  .feat{display:grid;grid-template-columns:1fr 1fr;gap:16px 36px}
+  .feat .f{display:flex;gap:12px}
+  .feat .f .b{color:var(--accent);font-family:var(--mono);flex:0 0 auto}
+  .feat .f h4{margin:0 0 3px;font-size:15.5px}
+  .feat .f p{margin:0;color:var(--muted);font-size:14px}
+
+  /* install steps */
+  .steps{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .block{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px}
+  .block h3{margin:0 0 12px;font-size:15px;color:var(--muted);font-weight:600}
+  .block pre{margin:0;font-family:var(--mono);font-size:13px;line-height:1.7;overflow-x:auto;color:var(--fg)}
+  .block pre .m{color:var(--faint)}
+  .block pre .g{color:var(--accent)}
+
+  footer{border-top:1px solid var(--border);padding:34px 0 60px;color:var(--muted);font-size:14px}
+  footer .row{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+
+  @media(max-width:760px){
+    .grid{grid-template-columns:1fr}
+    .feat{grid-template-columns:1fr}
+    .steps{grid-template-columns:1fr}
+    .nav-links a:not(.gh){display:none}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#11161d" stroke="#1e2730"/><path d="M8 11h16M8 17h11M8 23h6" stroke="#34d399" stroke-width="2.5" stroke-linecap="round"/></svg>
+    thresh
+  </div>
+  <div class="nav-links">
+    <a href="#modes">Modes</a>
+    <a href="#ranking">Ranking</a>
+    <a href="#install">Install</a>
+    <a class="gh" href="https://github.com/alejandroSuch/thresh">GitHub →</a>
+  </div>
+</nav>
+
+<header class="wrap">
+  <span class="tag">CLI · TUI · MCP server</span>
+  <h1>thresh<span class="dot">.</span></h1>
+  <p class="lede">Point it at a Jira scope and it surfaces the <strong>pending, actionable</strong> issues, ranked by impact, as a markdown report on stdout. The deterministic core is stdlib-only; an optional LLM tie-break recovers the signal Jira's fields don't encode.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/alejandroSuch/thresh/releases/latest">Download v0.1.0</a>
+    <a class="btn ghost" href="https://github.com/alejandroSuch/thresh">★ Star on GitHub</a>
+  </div>
+  <div class="copy">
+    <span class="pmt">$</span>
+    <code id="cmd">go install github.com/alejandroSuch/thresh@latest</code>
+    <button onclick="cp(this)">copy</button>
+  </div>
+</header>
+
+<section id="what" class="wrap" style="border-top:none;padding-top:8px">
+  <div class="term">
+    <div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="t">thresh ABC-417 | glow -</span></div>
+<pre><span class="c-cmd">$ thresh ABC</span>  <span class="c-mut"># a project key, an issue key, or --jql</span>
+
+<span class="c-mut"># 1  ABC-417  Freeze the JSON output contract: schema snapshot + CI gate</span>
+       In Progress · 0d · <span class="c-key">blocks ABC-418, ABC-419</span>
+       <span class="c-pink">why</span> foundational: unblocks 2; live committed work
+<span class="c-mut"># 2  ABC-370  Backup reuse loses applied state on re-sync</span>
+       Backlog · 35d
+       <span class="c-pink">why</span> <span class="c-warn">broken-flow bug</span>: rollback targets pre-sync, drops applied state
+<span class="c-mut"># 3  ABC-151  Separate evaluator agent with 3-tier confidence</span>
+       Selected for Development · 37d · <span class="c-key">blocks ABC-364</span>
+       <span class="c-pink">why</span> foundational: the unblocker for the validator-tier work
+   …
+<span class="c-mut"># 24 ABC-66   Investigate JJ rebase   · zombie: Selected 133d (ranked down)</span></pre>
+  </div>
+</section>
+
+<section id="modes" class="wrap">
+  <h2>Three ways to run it</h2>
+  <p class="sub">Same discovery and ranking engine, three front ends. Pick the one that fits where you are.</p>
+  <div class="grid">
+    <div class="card">
+      <div class="ic">--stdout</div>
+      <h3>CLI</h3>
+      <p>Markdown report on stdout. Pipe it to <code>glow</code>, redirect to a file, or paste it into a standup.</p>
+      <div class="kbd">thresh ABC-123</div>
+    </div>
+    <div class="card">
+      <div class="ic">--tui</div>
+      <h3>TUI</h3>
+      <p>Navigable list (Bubble Tea). Open in browser, self-assign, transition, or comment, right from the keyboard.</p>
+      <div class="kbd">thresh --tui ABC-123</div>
+    </div>
+    <div class="card">
+      <div class="ic">--mcp</div>
+      <h3>MCP server</h3>
+      <p>Exposes discovery and per-issue actions as tools Claude Code can call. The calling model does the re-rank.</p>
+      <div class="kbd">thresh --mcp</div>
+    </div>
+  </div>
+</section>
+
+<section id="ranking" class="wrap">
+  <h2>How the ranking works</h2>
+  <p class="sub">Deterministic by default (free, no model). Optional <code>--llm</code> tie-break re-ranks the top N by semantic impact, then falls back to the deterministic order on any error.</p>
+  <div class="feat">
+    <div class="f"><span class="b">▸</span><div><h4>Momentum, decayed</h4><p>In Progress &gt; Selected &gt; Backlog, aged down over time. Subtasks inherit the parent's momentum.</p></div></div>
+    <div class="f"><span class="b">▸</span><div><h4>Foundational = structural</h4><p>An issue ranks up only if it actually <code>blocks</code> others, not because the title sounds infra-y.</p></div></div>
+    <div class="f"><span class="b">▸</span><div><h4>Bugs by blast radius</h4><p>data-loss &gt; broken-flow &gt; degraded &gt; cosmetic, judged from the description, not the title.</p></div></div>
+    <div class="f"><span class="b">▸</span><div><h4>Zombie detection</h4><p>An "In Progress" item untouched for 60+ days is abandoned, and ranked below real live work.</p></div></div>
+    <div class="f"><span class="b">▸</span><div><h4>Gated work, flagged</h4><p>Anything with an open <code>blockedBy</code> is marked and pushed below comparable unblocked work.</p></div></div>
+    <div class="f"><span class="b">▸</span><div><h4>Two-pass LLM</h4><p>Ranks on titles + links first, pulls only the ambiguous descriptions on demand, then re-ranks. Cheap path stays cheap.</p></div></div>
+  </div>
+</section>
+
+<section id="install" class="wrap">
+  <h2>Install</h2>
+  <p class="sub">Prebuilt binaries for linux / macOS / windows × amd64 / arm64 ship with every <code>v*</code> tag via GoReleaser. Or build from source with Go 1.25+.</p>
+  <div class="steps">
+    <div class="block">
+      <h3>Get the binary</h3>
+<pre><span class="m"># with Go:</span>
+<span class="g">go install</span> github.com/alejandroSuch/thresh@latest
+
+<span class="m"># or download for your platform:</span>
+github.com/alejandroSuch/thresh/releases</pre>
+    </div>
+    <div class="block">
+      <h3>Point it at Jira</h3>
+<pre><span class="m"># create a token at id.atlassian.com</span>
+export THRESH_JIRA_BASE_URL=<span class="g">https://your-org.atlassian.net</span>
+export THRESH_JIRA_EMAIL=you@example.com
+export THRESH_JIRA_TOKEN=&lt;api-token&gt;
+
+<span class="m"># or store it once:</span>
+thresh setup</pre>
+    </div>
+  </div>
+  <div class="block" style="margin-top:16px">
+    <h3>Wire it into Claude Code (MCP)</h3>
+<pre>claude mcp add thresh -- /abs/path/to/thresh --mcp
+<span class="m"># read-only, calling model re-ranks:</span>
+claude mcp add thresh -- /abs/path/to/thresh --mcp --no-llm --tools <span class="g">discover_backlog,list_transitions</span></pre>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap row">
+    <span>MIT licensed · built in Go</span>
+    <span><a href="https://github.com/alejandroSuch/thresh">github.com/alejandroSuch/thresh</a></span>
+  </div>
+</footer>
+
+<script>
+function cp(btn){
+  const t=document.getElementById('cmd').textContent;
+  navigator.clipboard.writeText(t).then(()=>{const o=btn.textContent;btn.textContent='copied';setTimeout(()=>btn.textContent=o,1400)});
+}
+</script>
+</body>
+</html>
