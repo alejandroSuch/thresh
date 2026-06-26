@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// version is set at build time via -ldflags "-X main.version=...". Defaults to "dev".
+var version = "dev"
+
 var issueFields = []string{"summary", "status", "issuetype", "assignee", "updated", "parent", "issuelinks"}
 
 // Issue is the normalized form discovery + ranking work on.
@@ -410,12 +413,18 @@ func llmReRank(prov TicketProvider, pending []Issue, n int) ([]Issue, error) {
 }
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "setup" {
-		if err := runSetup(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "setup error: %v\n", err)
-			os.Exit(1)
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "setup":
+			if err := runSetup(os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "setup error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "version", "--version", "-v":
+			fmt.Println("thresh", version)
+			return
 		}
-		return
 	}
 
 	llmFlag := flag.Bool("llm", false, "re-rank the top items semantically via an LLM (tie-break)")

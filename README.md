@@ -2,9 +2,21 @@
 
 Backlog discovery for Jira (v0 slice). Point it at a scope (an issue key, a project, or a JQL query) and it surfaces the pending, actionable issues ranked by impact as a markdown report on stdout. Optional interactive TUI and an MCP server for Claude Code.
 
+## Install
+
+```sh
+# with Go (installs the latest tagged release to $GOBIN / $GOPATH/bin):
+go install github.com/alejandroSuch/thresh@latest
+
+# or grab a prebuilt binary for your OS/arch from the Releases page:
+# https://github.com/alejandroSuch/thresh/releases
+```
+
+Prebuilt binaries (linux/macOS/windows, amd64/arm64) and checksums are attached to each [GitHub release](https://github.com/alejandroSuch/thresh/releases), produced by GoReleaser on every `v*` tag.
+
 ## Run
 
-Requires Go 1.22+. The core (discovery, ranking, markdown, `--llm`) is stdlib only; the `--tui` mode pulls in Bubble Tea.
+Requires Go 1.25+ to build from source. The core (discovery, ranking, markdown, `--llm`) is stdlib only; the `--tui` mode pulls in Bubble Tea.
 
 ```sh
 # 1. Create a Jira API token: https://id.atlassian.com/manage-profile/security/api-tokens

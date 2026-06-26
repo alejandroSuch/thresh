@@ -102,7 +102,7 @@ func (s *mcpServer) handle(req rpcRequest) {
 		s.reply(req.ID, map[string]any{
 			"protocolVersion": mcpProtocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "thresh", "version": "0.1.0"},
+			"serverInfo":      map[string]any{"name": "thresh", "version": version},
 			"instructions":    mcpInstructions,
 		})
 	case "notifications/initialized", "notifications/cancelled":

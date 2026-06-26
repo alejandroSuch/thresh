@@ -1,4 +1,4 @@
-module thresh
+module github.com/alejandroSuch/thresh
 
 go 1.25.0
 
