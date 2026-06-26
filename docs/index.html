@@ -56,7 +56,7 @@
 
   /* sections */
   section{padding:78px 0 44px}
-  section.wrap{padding-top:40px;padding-bottom:28px}
+  section.wrap{padding-top:32px;padding-bottom:20px}
   h2{font-size:clamp(24px,4vw,32px);letter-spacing:-.03em;margin:0 0 8px}
   .sub{color:var(--muted);margin:0 0 28px;max-width:640px}
 
@@ -113,6 +113,12 @@
   .block pre{margin:0;font-family:var(--mono);font-size:13px;line-height:1.7;overflow-x:auto;color:var(--fg)}
   .block pre .m{color:var(--faint)}
   .block pre .g{color:var(--accent)}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:-2px 0 14px}
+  .tabs button{background:var(--panel-2);border:1px solid var(--border);color:var(--muted);font-family:var(--sans);font-size:13px;padding:6px 12px;border-radius:8px;cursor:pointer;transition:.15s}
+  .tabs button:hover{color:var(--fg)}
+  .tabs button.on{background:var(--accent);color:#06281d;border-color:transparent;font-weight:600}
+  .tabp{display:none}
+  .tabp.on{display:block}
 
   footer{border-top:1px solid var(--border);padding:34px 0 60px;color:var(--muted);font-size:14px}
   footer .row{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
@@ -156,7 +162,7 @@
   </div>
 </header>
 
-<section id="what" class="wrap" style="border-top:none;padding-top:8px;padding-bottom:20px">
+<section id="what" class="wrap" style="border-top:none;padding-top:8px">
   <div class="term">
     <div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="t">thresh ABC-417 | glow -</span></div>
 <pre><span class="c-cmd">$ thresh ABC</span>  <span class="c-mut"># a project key, an issue key, or --jql</span>
@@ -267,10 +273,44 @@ thresh setup</pre>
     </div>
   </div>
   <div class="block" style="margin:16px 0 32px">
-    <h3>Wire it into Claude Code (MCP)</h3>
+    <h3>Wire it into your agent</h3>
+    <p style="color:var(--muted);font-size:13.5px;margin:-4px 0 14px">thresh speaks MCP over stdio, so any MCP client can drive it. Build the binary, run <code>thresh setup</code> once, then point your agent at it:</p>
+    <div class="tabs">
+      <button class="on" onclick="tab(this,'t-cc')">Claude Code</button>
+      <button onclick="tab(this,'t-codex')">Codex</button>
+      <button onclick="tab(this,'t-json')">Cursor · Windsurf · Desktop</button>
+      <button onclick="tab(this,'t-vsc')">VS Code</button>
+    </div>
+    <div id="t-cc" class="tabp on">
 <pre>claude mcp add thresh -- /abs/path/to/thresh --mcp
+
 <span class="m"># read-only, calling model re-ranks:</span>
-claude mcp add thresh -- /abs/path/to/thresh --mcp --no-llm --tools <span class="g">discover_backlog,list_transitions</span></pre>
+claude mcp add thresh -- /abs/path/to/thresh --mcp --no-llm \
+  --tools <span class="g">discover_backlog,list_transitions</span></pre>
+    </div>
+    <div id="t-codex" class="tabp">
+<pre><span class="m"># ~/.codex/config.toml</span>
+[mcp_servers.thresh]
+command = "/abs/path/to/thresh"
+args = [<span class="g">"--mcp"</span>]</pre>
+    </div>
+    <div id="t-json" class="tabp">
+<pre><span class="m">// Cursor  ~/.cursor/mcp.json    Windsurf  ~/.codeium/windsurf/mcp_config.json</span>
+<span class="m">// Claude Desktop  claude_desktop_config.json    Cline  MCP settings</span>
+{
+  "mcpServers": {
+    "thresh": { "command": "/abs/path/to/thresh", "args": [<span class="g">"--mcp"</span>] }
+  }
+}</pre>
+    </div>
+    <div id="t-vsc" class="tabp">
+<pre><span class="m">// .vscode/mcp.json  (Copilot agent mode — note "servers" + "type")</span>
+{
+  "servers": {
+    "thresh": { "type": <span class="g">"stdio"</span>, "command": "/abs/path/to/thresh", "args": [<span class="g">"--mcp"</span>] }
+  }
+}</pre>
+    </div>
   </div>
 </section>
 
@@ -285,6 +325,13 @@ claude mcp add thresh -- /abs/path/to/thresh --mcp --no-llm --tools <span class=
 function cp(btn){
   const t=document.getElementById('cmd').textContent;
   navigator.clipboard.writeText(t).then(()=>{const o=btn.textContent;btn.textContent='copied';setTimeout(()=>btn.textContent=o,1400)});
+}
+function tab(btn,id){
+  const blk=btn.closest('.block');
+  blk.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('on'));
+  blk.querySelectorAll('.tabp').forEach(p=>p.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById(id).classList.add('on');
 }
 </script>
 </body>
