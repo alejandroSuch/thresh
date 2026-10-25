@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -72,12 +73,20 @@ type searchResp struct {
 
 // search runs a JQL query against the enhanced search endpoint, following pagination.
 func (j *Jira) search(jql string, fields []string) ([]rawIssue, error) {
+	return j.searchN(jql, fields, 0)
+}
+
+func (j *Jira) searchN(jql string, fields []string, limit int) ([]rawIssue, error) {
 	var out []rawIssue
 	token := ""
 	for {
+		page := 100
+		if limit > 0 {
+			page = min(page, limit-len(out))
+		}
 		body := map[string]any{
 			"jql":        jql,
-			"maxResults": 100,
+			"maxResults": page,
 			"fields":     fields,
 		}
 		if token != "" {
@@ -112,6 +121,9 @@ func (j *Jira) search(jql string, fields []string) ([]rawIssue, error) {
 			return nil, fmt.Errorf("decode search response: %w", err)
 		}
 		out = append(out, sr.Issues...)
+		if limit > 0 && len(out) >= limit {
+			return out[:limit], nil
+		}
 
 		if sr.NextPageToken == "" || sr.IsLast {
 			break
@@ -192,9 +204,10 @@ func (j *Jira) browseURL(key string) string {
 
 // Transition is a workflow transition available on an issue.
 type Transition struct {
-	ID   string
-	Name string
-	To   string // target status name
+	ID         string
+	Name       string
+	To         string // target status name
+	ToCategory string
 }
 
 // transitions lists the workflow transitions currently available on the issue.
@@ -208,7 +221,10 @@ func (j *Jira) transitions(key string) ([]Transition, error) {
 			ID   string `json:"id"`
 			Name string `json:"name"`
 			To   struct {
-				Name string `json:"name"`
+				Name           string `json:"name"`
+				StatusCategory struct {
+					Key string `json:"key"`
+				} `json:"statusCategory"`
 			} `json:"to"`
 		} `json:"transitions"`
 	}
@@ -217,7 +233,7 @@ func (j *Jira) transitions(key string) ([]Transition, error) {
 	}
 	out := make([]Transition, 0, len(r.Transitions))
 	for _, t := range r.Transitions {
-		out = append(out, Transition{ID: t.ID, Name: t.Name, To: t.To.Name})
+		out = append(out, Transition{ID: t.ID, Name: t.Name, To: t.To.Name, ToCategory: t.To.StatusCategory.Key})
 	}
 	return out, nil
 }
@@ -227,6 +243,65 @@ func (j *Jira) doTransition(key, transitionID string) error {
 	_, err := j.do(http.MethodPost, "/rest/api/3/issue/"+key+"/transitions",
 		map[string]any{"transition": map[string]string{"id": transitionID}})
 	return err
+}
+
+type IssueRow struct {
+	Key            string `json:"key"`
+	Summary        string `json:"summary"`
+	Type           string `json:"type"`
+	Status         string `json:"status"`
+	StatusCategory string `json:"statusCategory"`
+	Updated        string `json:"updated"`
+	URL            string `json:"url"`
+	Parent         string `json:"parent,omitempty"`
+}
+
+func (j *Jira) searchIssues(jql string, limit int) ([]IssueRow, error) {
+	raws, err := j.searchN(jql, []string{"summary", "status", "issuetype", "updated", "parent"}, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]IssueRow, 0, len(raws))
+	for _, r := range raws {
+		t, err := time.Parse("2006-01-02T15:04:05.000-0700", r.Fields.Updated)
+		if err != nil {
+			return nil, fmt.Errorf("%s: unparseable updated %q", r.Key, r.Fields.Updated)
+		}
+		row := IssueRow{
+			Key:            r.Key,
+			Summary:        r.Fields.Summary,
+			Type:           r.Fields.Issuetype.Name,
+			Status:         r.Fields.Status.Name,
+			StatusCategory: r.Fields.Status.StatusCategory.Key,
+			Updated:        t.Format(time.RFC3339),
+			URL:            j.browseURL(r.Key),
+		}
+		if r.Fields.Parent != nil {
+			row.Parent = r.Fields.Parent.Key
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+type User struct {
+	AccountID    string `json:"accountId"`
+	DisplayName  string `json:"displayName"`
+	EmailAddress string `json:"emailAddress,omitempty"` // hidden by Jira for many users
+	AccountType  string `json:"accountType"`
+	Active       bool   `json:"active"`
+}
+
+func (j *Jira) findUsers(query string) ([]User, error) {
+	data, err := j.do(http.MethodGet, "/rest/api/3/user/search?query="+url.QueryEscape(query)+"&maxResults=20", nil)
+	if err != nil {
+		return nil, err
+	}
+	out := []User{}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, fmt.Errorf("decode user search: %w", err)
+	}
+	return out, nil
 }
 
 // IssueDetail is an issue plus its (flattened, truncated) description.

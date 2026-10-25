@@ -11,6 +11,10 @@ type TicketProvider interface {
 	discover(scope, query string) (map[string]Issue, map[string]bool, error)
 	// describe returns the keys with their (flattened, truncated) descriptions.
 	describe(keys []string) ([]IssueDetail, error)
+	// searchIssues runs a raw query unfiltered (done issues and parents kept), at most limit issues.
+	searchIssues(jql string, limit int) ([]IssueRow, error)
+	// findUsers searches accounts by name or email.
+	findUsers(query string) ([]User, error)
 	// transitions lists the workflow transitions available on an issue.
 	transitions(key string) ([]Transition, error)
 	doTransition(key, transitionID string) error

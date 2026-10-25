@@ -185,6 +185,27 @@ func toolSchemas() []any {
 			},
 		},
 		map[string]any{
+			"name":        "search_issues",
+			"description": "Run a JQL query and return the matching issues unfiltered (done issues and parents kept) as a JSON array of key, summary, type, status, statusCategory, updated (RFC 3339), url and parent.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"jql":   str("raw JQL query"),
+					"limit": map[string]any{"type": "integer", "description": "maximum issues returned (default 200, max 1000)"},
+				},
+				"required": []any{"jql"},
+			},
+		},
+		map[string]any{
+			"name":        "find_users",
+			"description": "Search Jira accounts by name or email and return up to 20 as a JSON array of accountId, displayName, emailAddress (when Jira shows it), accountType and active.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"query": str("name or email to search for")},
+				"required":   []any{"query"},
+			},
+		},
+		map[string]any{
 			"name":        "assign_issue",
 			"description": "Assign a Jira issue to the current user (the THRESH_JIRA_EMAIL identity).",
 			"inputSchema": map[string]any{
@@ -302,6 +323,47 @@ func (s *mcpServer) dispatchTool(name string, args json.RawMessage) (map[string]
 			return nil, err
 		}
 		out, _ := json.MarshalIndent(details, "", "  ")
+		return toolText(string(out), false), nil
+
+	case "search_issues":
+		var a struct {
+			JQL   string `json:"jql"`
+			Limit int    `json:"limit"`
+		}
+		json.Unmarshal(args, &a)
+		if a.JQL == "" {
+			return nil, fmt.Errorf("jql is required")
+		}
+		if a.Limit <= 0 {
+			a.Limit = 200
+		}
+		a.Limit = min(a.Limit, 1000)
+		rows, err := s.prov.searchIssues(a.JQL, a.Limit)
+		if err != nil {
+			return nil, err
+		}
+		if rows == nil {
+			rows = []IssueRow{}
+		}
+		out, _ := json.MarshalIndent(rows, "", "  ")
+		return toolText(string(out), false), nil
+
+	case "find_users":
+		var a struct {
+			Query string `json:"query"`
+		}
+		json.Unmarshal(args, &a)
+		if a.Query == "" {
+			return nil, fmt.Errorf("query is required")
+		}
+		users, err := s.prov.findUsers(a.Query)
+		if err != nil {
+			return nil, err
+		}
+		if users == nil {
+			users = []User{}
+		}
+		out, _ := json.MarshalIndent(users, "", "  ")
 		return toolText(string(out), false), nil
 
 	case "assign_issue":

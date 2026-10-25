@@ -150,7 +150,9 @@ Tools exposed:
 |---|---|---|
 | `discover_backlog` | Discover + rank the pending issues for a scope (JSON) plus per-issue signals and dependency links (`blocks`/`blockedBy`/`relates`). Args: `scope` (issue or project key) or `jql`, plus `llm`, `top`. | no |
 | `describe_issues` | Fetch the (truncated) descriptions of specific issues, to judge severity / foundational-ness when the title is ambiguous. Arg `keys` (array). | no |
-| `list_transitions` | List the workflow transitions available on an issue. Arg `key`. | no |
+| `search_issues` | Run a JQL query and return the issues unfiltered (done and parents kept) as a JSON array. Args `jql`, `limit` (default 200, max 1000). | no |
+| `find_users` | Search Jira accounts by name or email (up to 20); `emailAddress` only when Jira shows it. Arg `query`. | no |
+| `list_transitions` | List the workflow transitions available on an issue (with the target's status category in `ToCategory`). Arg `key`. | no |
 | `assign_issue` | Assign an issue to you (the configured identity). Arg `key`. | **yes** |
 | `transition_issue` | Move an issue through a transition. Args `key`, `transitionId`. | **yes** |
 | `comment_issue` | Add a plain-text comment. Args `key`, `text`. | **yes** |
