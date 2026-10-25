@@ -225,7 +225,7 @@ func TestListTransitionsCarriesToCategory(t *testing.T) {
 	s := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"transitions":[{"id":"31","name":"Done","to":{"name":"Closed","statusCategory":{"key":"done"}}}]}`))
 	})
-	text, err := callText(t, s, "list_transitions", `{"key":"A-1"}`)
+	text, err := callText(t, s, "list_transitions", `{"key":"AB-1"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,5 +250,23 @@ func TestNewToolsFollowAllowlist(t *testing.T) {
 	}
 	if !names["search_issues"] || !names["find_users"] {
 		t.Fatalf("tools/list lacks the new tools: %v", names)
+	}
+}
+
+func TestToolsRefuseAKeyOrTransitionIDThatIsNotOneBeforeCallingJira(t *testing.T) {
+	s := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Jira was called: %s %s", r.Method, r.URL)
+	})
+	for _, c := range []struct{ name, args string }{
+		{"assign_issue", `{"key":"ABC-1/../../myself"}`},
+		{"list_transitions", `{"key":"abc-1"}`},
+		{"transition_issue", `{"key":"ABC-1?x=1","transitionId":"31"}`},
+		{"transition_issue", `{"key":"ABC-1","transitionId":"31/../x"}`},
+		{"comment_issue", `{"key":"ABC-","text":"hi"}`},
+		{"describe_issues", `{"keys":["ABC-1","ABC-2) OR project = X"]}`},
+	} {
+		if _, err := callText(t, s, c.name, c.args); err == nil || !strings.Contains(err.Error(), "invalid") {
+			t.Errorf("%s %s: err = %v", c.name, c.args, err)
+		}
 	}
 }

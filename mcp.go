@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -274,6 +275,9 @@ func (s *mcpServer) dispatchTool(name string, args json.RawMessage) (map[string]
 	if s.allowed != nil && !s.allowed[name] {
 		return nil, fmt.Errorf("tool %q is not enabled on this server", name)
 	}
+	if err := checkIDs(args); err != nil {
+		return nil, err
+	}
 	switch name {
 	case "discover_backlog":
 		var a struct {
@@ -419,6 +423,34 @@ func (s *mcpServer) dispatchTool(name string, args json.RawMessage) (map[string]
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
+}
+
+var (
+	issueKey     = regexp.MustCompile(`^[A-Z][A-Z0-9]+-[0-9]+$`)
+	transitionID = regexp.MustCompile(`^[0-9]+$`)
+)
+
+// checkIDs refuses a key or transitionId that is not one, since they are joined into REST paths and JQL.
+func checkIDs(args json.RawMessage) error {
+	var a struct {
+		Key          *string  `json:"key"`
+		Keys         []string `json:"keys"`
+		TransitionID *string  `json:"transitionId"`
+	}
+	json.Unmarshal(args, &a)
+	keys := a.Keys
+	if a.Key != nil && *a.Key != "" {
+		keys = append(keys, *a.Key)
+	}
+	for _, k := range keys {
+		if !issueKey.MatchString(k) {
+			return fmt.Errorf("invalid issue key %q", k)
+		}
+	}
+	if a.TransitionID != nil && *a.TransitionID != "" && !transitionID.MatchString(*a.TransitionID) {
+		return fmt.Errorf("invalid transitionId %q", *a.TransitionID)
+	}
+	return nil
 }
 
 func argKey(args json.RawMessage) (string, error) {
