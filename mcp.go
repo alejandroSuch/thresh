@@ -426,7 +426,7 @@ func (s *mcpServer) dispatchTool(name string, args json.RawMessage) (map[string]
 }
 
 var (
-	issueKey     = regexp.MustCompile(`^[A-Z][A-Z0-9]+-[0-9]+$`)
+	issueKey     = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)
 	transitionID = regexp.MustCompile(`^[0-9]+$`)
 )
 

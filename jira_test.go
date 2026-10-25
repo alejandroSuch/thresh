@@ -225,7 +225,7 @@ func TestListTransitionsCarriesToCategory(t *testing.T) {
 	s := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"transitions":[{"id":"31","name":"Done","to":{"name":"Closed","statusCategory":{"key":"done"}}}]}`))
 	})
-	text, err := callText(t, s, "list_transitions", `{"key":"AB-1"}`)
+	text, err := callText(t, s, "list_transitions", `{"key":"AB_C-1"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
