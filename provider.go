@@ -9,8 +9,9 @@ type TicketProvider interface {
 	// whole project) or a raw query into the issue set plus the "is a parent of
 	// another in-set issue" mask.
 	discover(scope, query string) (map[string]Issue, map[string]bool, error)
-	// describe returns the keys with their (flattened, truncated) descriptions.
-	describe(keys []string) ([]IssueDetail, error)
+	// describe returns the keys with their descriptions: flattened and truncated, or, with markdown,
+	// whole and rendered as markdown with Format set to "markdown".
+	describe(keys []string, markdown bool) ([]IssueDetail, error)
 	// searchIssues runs a raw query unfiltered (done issues and parents kept), at most limit issues.
 	searchIssues(jql string, limit int) ([]IssueRow, error)
 	// findUsers searches accounts by name or email.

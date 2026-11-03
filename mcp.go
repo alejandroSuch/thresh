@@ -180,9 +180,12 @@ func toolSchemas() []any {
 			"name":        "describe_issues",
 			"description": "Fetch the full (truncated) descriptions of specific issues, to judge severity or whether work is foundational when the title alone is ambiguous. Call this for the handful of discover_backlog items you are unsure about, then finalize your ranking.",
 			"inputSchema": map[string]any{
-				"type":       "object",
-				"properties": map[string]any{"keys": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "issue keys, e.g. [\"ABC-123\",\"ABC-456\"]"}},
-				"required":   []any{"keys"},
+				"type": "object",
+				"properties": map[string]any{
+					"keys":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "issue keys, e.g. [\"ABC-123\",\"ABC-456\"]"},
+					"format": map[string]any{"type": "string", "enum": []any{"text", "markdown"}, "description": "text (default): flattened, cut at 900 characters. markdown: the whole description with headings, lists and task items, and each item carries format \"markdown\""},
+				},
+				"required": []any{"keys"},
 			},
 		},
 		map[string]any{
@@ -316,13 +319,17 @@ func (s *mcpServer) dispatchTool(name string, args json.RawMessage) (map[string]
 
 	case "describe_issues":
 		var a struct {
-			Keys []string `json:"keys"`
+			Keys   []string `json:"keys"`
+			Format string   `json:"format"`
 		}
 		json.Unmarshal(args, &a)
 		if len(a.Keys) == 0 {
 			return nil, fmt.Errorf("keys is required")
 		}
-		details, err := s.prov.describe(a.Keys)
+		if a.Format != "" && a.Format != "text" && a.Format != "markdown" {
+			return nil, fmt.Errorf("format %q: want text or markdown", a.Format)
+		}
+		details, err := s.prov.describe(a.Keys, a.Format == "markdown")
 		if err != nil {
 			return nil, err
 		}

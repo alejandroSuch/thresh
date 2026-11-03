@@ -375,7 +375,7 @@ func llmReRank(prov TicketProvider, pending []Issue, n int) ([]Issue, error) {
 		if len(need) > 12 {
 			need = need[:12]
 		}
-		if details, derr := prov.describe(need); derr == nil {
+		if details, derr := prov.describe(need, false); derr == nil {
 			byKeyDesc := make(map[string]string, len(details))
 			for _, d := range details {
 				byKeyDesc[d.Key] = d.Description

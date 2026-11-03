@@ -270,3 +270,76 @@ func TestToolsRefuseAKeyOrTransitionIDThatIsNotOneBeforeCallingJira(t *testing.T
 		}
 	}
 }
+
+func describeServer(t *testing.T, desc map[string]any) *mcpServer {
+	return newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		f := map[string]any{"summary": "s", "description": desc,
+			"status": map[string]any{"name": "Open"}, "issuetype": map[string]any{"name": "Bug"}}
+		json.NewEncoder(w).Encode(map[string]any{"issues": []any{map[string]any{"key": "ABC-1", "fields": f}}, "isLast": true})
+	})
+}
+
+func adfDoc(nodes ...any) map[string]any {
+	return map[string]any{"type": "doc", "version": 1, "content": nodes}
+}
+
+func adfNode(typ string, attrs map[string]any, content ...any) map[string]any {
+	n := map[string]any{"type": typ, "content": content}
+	if attrs != nil {
+		n["attrs"] = attrs
+	}
+	return n
+}
+
+func adfTextNode(s string) map[string]any { return map[string]any{"type": "text", "text": s} }
+
+func decisionDoc(filler int) map[string]any {
+	return adfDoc(
+		adfNode("heading", map[string]any{"level": 2}, adfTextNode("Context")),
+		adfNode("paragraph", nil, adfTextNode(strings.Repeat("x", filler))),
+		adfNode("heading", map[string]any{"level": 2}, adfTextNode("Decision needed")),
+		adfNode("paragraph", nil, adfTextNode("Retry or count.")),
+		adfNode("bulletList", nil, adfNode("listItem", nil, adfNode("paragraph", nil, adfTextNode("first")))),
+		adfNode("taskList", nil,
+			adfNode("taskItem", map[string]any{"state": "DONE"}, adfTextNode("step zero")),
+			adfNode("taskItem", map[string]any{"state": "TODO"}, adfTextNode("delete mongo"))),
+	)
+}
+
+func TestDescribeMarkdownKeepsHeadingsAndTheWholeDescription(t *testing.T) {
+	s := describeServer(t, decisionDoc(2000))
+	text, err := callText(t, s, "describe_issues", `{"keys":["ABC-1"],"format":"markdown"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ds []IssueDetail
+	if err := json.Unmarshal([]byte(text), &ds); err != nil || len(ds) != 1 {
+		t.Fatalf("decode %q: %v", text, err)
+	}
+	if ds[0].Format != "markdown" {
+		t.Fatalf("format = %q, want markdown", ds[0].Format)
+	}
+	for _, want := range []string{"## Context\n", "## Decision needed\n", "Retry or count.", "- first", "- [x] step zero", "- [ ] delete mongo"} {
+		if !strings.Contains(ds[0].Description, want) {
+			t.Errorf("description lacks %q:\n%s", want, ds[0].Description)
+		}
+	}
+}
+
+func TestDescribeDefaultStaysPlainAndTruncated(t *testing.T) {
+	s := describeServer(t, decisionDoc(2000))
+	text, err := callText(t, s, "describe_issues", `{"keys":["ABC-1"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(text, `"format"`) || strings.Contains(text, "## ") || strings.Contains(text, "Decision needed") {
+		t.Fatalf("default output changed:\n%s", text)
+	}
+}
+
+func TestDescribeRejectsAnUnknownFormat(t *testing.T) {
+	s := describeServer(t, decisionDoc(10))
+	if _, err := callText(t, s, "describe_issues", `{"keys":["ABC-1"],"format":"html"}`); err == nil || !strings.Contains(err.Error(), "format") {
+		t.Fatalf("err = %v", err)
+	}
+}

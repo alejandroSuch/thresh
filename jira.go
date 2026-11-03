@@ -311,10 +311,12 @@ type IssueDetail struct {
 	Type        string `json:"type"`
 	Status      string `json:"status"`
 	Description string `json:"description"`
+	Format      string `json:"format,omitempty"`
 }
 
-// describe fetches the keys with their descriptions (ADF flattened to text, truncated).
-func (j *Jira) describe(keys []string) ([]IssueDetail, error) {
+// describe fetches the keys with their descriptions: ADF flattened to text and truncated, or, with
+// markdown, the whole description rendered as markdown.
+func (j *Jira) describe(keys []string, markdown bool) ([]IssueDetail, error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
@@ -326,19 +328,21 @@ func (j *Jira) describe(keys []string) ([]IssueDetail, error) {
 	out := make([]IssueDetail, 0, len(raws))
 	for _, r := range raws {
 		var b strings.Builder
+		var node any
 		if len(r.Fields.Description) > 0 {
-			var node any
-			if json.Unmarshal(r.Fields.Description, &node) == nil {
-				adfText(node, &b)
+			if err := json.Unmarshal(r.Fields.Description, &node); err != nil {
+				return nil, fmt.Errorf("%s: decode description: %w", r.Key, err)
 			}
 		}
-		out = append(out, IssueDetail{
-			Key:         r.Key,
-			Summary:     r.Fields.Summary,
-			Type:        r.Fields.Issuetype.Name,
-			Status:      r.Fields.Status.Name,
-			Description: truncate(strings.TrimSpace(b.String()), 900),
-		})
+		d := IssueDetail{Key: r.Key, Summary: r.Fields.Summary, Type: r.Fields.Issuetype.Name, Status: r.Fields.Status.Name}
+		if markdown {
+			adfMarkdown(node, &b, "")
+			d.Description, d.Format = strings.TrimSpace(b.String()), "markdown"
+		} else {
+			adfText(node, &b)
+			d.Description = truncate(strings.TrimSpace(b.String()), 900)
+		}
+		out = append(out, d)
 	}
 	return out, nil
 }
@@ -362,6 +366,73 @@ func adfText(node any, b *strings.Builder) {
 	case []any:
 		for _, ch := range n {
 			adfText(ch, b)
+		}
+	}
+}
+
+// adfMarkdown renders an Atlassian Document Format tree as markdown; indent prefixes nested list items.
+func adfMarkdown(node any, b *strings.Builder, indent string) {
+	switch n := node.(type) {
+	case []any:
+		for _, ch := range n {
+			adfMarkdown(ch, b, indent)
+		}
+	case map[string]any:
+		kids, _ := n["content"].([]any)
+		attrs, _ := n["attrs"].(map[string]any)
+		switch n["type"] {
+		case "text":
+			t, _ := n["text"].(string)
+			b.WriteString(t)
+		case "hardBreak":
+			b.WriteString("\n")
+		case "heading":
+			level, _ := attrs["level"].(float64)
+			b.WriteString("\n" + strings.Repeat("#", max(1, int(level))) + " ")
+			adfMarkdown(kids, b, indent)
+			b.WriteString("\n\n")
+		case "paragraph":
+			adfMarkdown(kids, b, indent)
+			b.WriteString("\n\n")
+		case "bulletList", "orderedList", "taskList":
+			adfMarkdown(kids, b, indent)
+			b.WriteString("\n")
+		case "listItem":
+			var item strings.Builder
+			adfMarkdown(kids, &item, indent+"  ")
+			b.WriteString(indent + "- " + strings.TrimSpace(item.String()) + "\n")
+		case "taskItem":
+			box := "[ ]"
+			if attrs["state"] == "DONE" {
+				box = "[x]"
+			}
+			var item strings.Builder
+			adfMarkdown(kids, &item, indent+"  ")
+			b.WriteString(indent + "- " + box + " " + strings.TrimSpace(item.String()) + "\n")
+		case "codeBlock":
+			b.WriteString("```\n")
+			adfMarkdown(kids, b, indent)
+			b.WriteString("\n```\n\n")
+		case "blockquote":
+			var q strings.Builder
+			adfMarkdown(kids, &q, indent)
+			for _, l := range strings.Split(strings.TrimSpace(q.String()), "\n") {
+				b.WriteString("> " + l + "\n")
+			}
+			b.WriteString("\n")
+		case "tableRow":
+			cells := make([]string, 0, len(kids))
+			for _, c := range kids {
+				var cell strings.Builder
+				adfMarkdown(c, &cell, indent)
+				cells = append(cells, strings.ReplaceAll(strings.TrimSpace(cell.String()), "\n", " "))
+			}
+			b.WriteString("| " + strings.Join(cells, " | ") + " |\n")
+		case "table":
+			adfMarkdown(kids, b, indent)
+			b.WriteString("\n")
+		default:
+			adfMarkdown(kids, b, indent)
 		}
 	}
 }
