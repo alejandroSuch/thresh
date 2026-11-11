@@ -20,6 +20,8 @@ type TicketProvider interface {
 	transitions(key string) ([]Transition, error)
 	doTransition(key, transitionID string) error
 	addComment(key, text string) error
+	// linkIssues records that blocker blocks blocked.
+	linkIssues(blocker, blocked string) error
 	// assignToMe assigns the issue to the authenticated user.
 	assignToMe(key string) error
 	// browseURL is the human-facing URL for an issue key.

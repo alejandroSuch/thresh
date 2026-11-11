@@ -264,10 +264,167 @@ func TestToolsRefuseAKeyOrTransitionIDThatIsNotOneBeforeCallingJira(t *testing.T
 		{"transition_issue", `{"key":"ABC-1","transitionId":"31/../x"}`},
 		{"comment_issue", `{"key":"ABC-","text":"hi"}`},
 		{"describe_issues", `{"keys":["ABC-1","ABC-2) OR project = X"]}`},
+		{"link_issues", `{"blocker":"ABC-1/../x","blocked":"ABC-2"}`},
+		{"link_issues", `{"blocker":"ABC-1","blocked":"abc-2"}`},
 	} {
 		if _, err := callText(t, s, c.name, c.args); err == nil || !strings.Contains(err.Error(), "invalid") {
 			t.Errorf("%s %s: err = %v", c.name, c.args, err)
 		}
+	}
+}
+
+func blocksType() map[string]any {
+	return map[string]any{"name": "Blocks", "outward": "blocks", "inward": "is blocked by"}
+}
+
+func linksSearchServer(t *testing.T, links []any) *mcpServer {
+	return newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Fields []string `json:"fields"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if !strings.Contains(strings.Join(body.Fields, ","), "issuelinks") {
+			t.Errorf("fields = %v, want issuelinks", body.Fields)
+		}
+		iss := searchIssue("GKCS-1", "new", "2026-01-02T03:04:05.000+0000", "")
+		iss["fields"].(map[string]any)["issuelinks"] = links
+		json.NewEncoder(w).Encode(map[string]any{"issues": []any{iss}, "isLast": true})
+	})
+}
+
+func TestSearchIssuesReturnsBlocksLinksWithIDAndDirectionAndDropsOthers(t *testing.T) {
+	s := linksSearchServer(t, []any{
+		map[string]any{"id": "10231", "type": blocksType(), "outwardIssue": map[string]any{"key": "GKCS-2"}},
+		map[string]any{"id": "10232", "type": blocksType(), "inwardIssue": map[string]any{"key": "GKCS-0"}},
+		map[string]any{"id": "10233", "type": map[string]any{"name": "Relates", "outward": "relates to", "inward": "relates to"}, "outwardIssue": map[string]any{"key": "GKCS-9"}},
+	})
+	text, err := callText(t, s, "search_issues", `{"jql":"project = GKCS"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(text), &rows); err != nil || len(rows) != 1 {
+		t.Fatalf("decode %q: %v", text, err)
+	}
+	want := []any{
+		map[string]any{"id": "10231", "direction": "blocks", "key": "GKCS-2"},
+		map[string]any{"id": "10232", "direction": "blocked_by", "key": "GKCS-0"},
+	}
+	if fmt.Sprint(rows[0]["links"]) != fmt.Sprint(want) {
+		t.Fatalf("links = %v, want %v", rows[0]["links"], want)
+	}
+}
+
+func TestSearchIssuesOmitsLinksWhenThereAreNone(t *testing.T) {
+	text, err := callText(t, linksSearchServer(t, nil), "search_issues", `{"jql":"project = GKCS"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(text, `"links"`) {
+		t.Fatalf("links should be omitted:\n%s", text)
+	}
+}
+
+func TestLinkIssuesPostsABlocksLinkWithTheBlockerAsInwardIssue(t *testing.T) {
+	var got map[string]any
+	s := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/rest/api/3/issueLink" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusCreated)
+	})
+	text, err := callText(t, s, "link_issues", `{"blocker":"GKCS-1","blocked":"GKCS-2"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text != "linked GKCS-1 blocks GKCS-2" {
+		t.Fatalf("text = %q", text)
+	}
+	want := map[string]any{
+		"type":         map[string]any{"name": "Blocks"},
+		"inwardIssue":  map[string]any{"key": "GKCS-1"},
+		"outwardIssue": map[string]any{"key": "GKCS-2"},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("payload = %v, want %v", got, want)
+	}
+}
+
+// Jira stores a created link from the request's inwardIssue to its outwardIssue: the inwardIssue
+// reads it back as an outward link to the other, the outwardIssue as an inward one.
+func TestALinkCreatedByLinkIssuesReadsBackAsBlocksOnTheBlockerAndBlockedByOnTheBlocked(t *testing.T) {
+	var sent struct {
+		InwardIssue, OutwardIssue struct{ Key string }
+	}
+	s := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&sent)
+		w.WriteHeader(http.StatusCreated)
+	})
+	if _, err := callText(t, s, "link_issues", `{"blocker":"GKCS-1","blocked":"GKCS-2"}`); err != nil {
+		t.Fatal(err)
+	}
+	onFrom := map[string]any{"id": "1", "type": blocksType(), "outwardIssue": map[string]any{"key": sent.OutwardIssue.Key}}
+	onTo := map[string]any{"id": "1", "type": blocksType(), "inwardIssue": map[string]any{"key": sent.InwardIssue.Key}}
+	for _, c := range []struct {
+		link any
+		want string
+	}{
+		{onFrom, `"links":[{"id":"1","direction":"blocks","key":"GKCS-2"}]`},
+		{onTo, `"links":[{"id":"1","direction":"blocked_by","key":"GKCS-1"}]`},
+	} {
+		text, err := callText(t, linksSearchServer(t, []any{c.link}), "search_issues", `{"jql":"x"}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []json.RawMessage
+		json.Unmarshal([]byte(text), &rows)
+		var compact strings.Builder
+		for _, r := range rows {
+			b, _ := json.Marshal(r)
+			compact.Write(b)
+		}
+		if len(rows) != 1 || !strings.Contains(compact.String(), c.want) {
+			t.Fatalf("rows = %s, want %s", compact.String(), c.want)
+		}
+	}
+}
+
+func TestLinkIssuesIsAnErrorResultWithJirasError(t *testing.T) {
+	s := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"errorMessages":["Issue Does Not Exist"]}`))
+	})
+	if _, err := callText(t, s, "link_issues", `{"blocker":"GKCS-1","blocked":"GKCS-2"}`); err == nil || !strings.Contains(err.Error(), "Issue Does Not Exist") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLinkIssuesRequiresBothKeys(t *testing.T) {
+	s := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Jira was called: %s %s", r.Method, r.URL)
+	})
+	if _, err := callText(t, s, "link_issues", `{"blocker":"GKCS-1"}`); err == nil || !strings.Contains(err.Error(), "required") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLinkIssuesFollowsAllowlist(t *testing.T) {
+	s := &mcpServer{allowed: map[string]bool{"search_issues": true}}
+	if _, err := s.dispatchTool("link_issues", json.RawMessage(`{"blocker":"A-1","blocked":"A-2"}`)); err == nil || !strings.Contains(err.Error(), "not enabled") {
+		t.Fatalf("err = %v", err)
+	}
+	for _, tool := range s.visibleTools() {
+		if tool.(map[string]any)["name"] == "link_issues" {
+			t.Fatal("link_issues listed though not allowlisted")
+		}
+	}
+	names := map[string]bool{}
+	for _, tool := range (&mcpServer{}).visibleTools() {
+		names[tool.(map[string]any)["name"].(string)] = true
+	}
+	if !names["link_issues"] {
+		t.Fatalf("tools/list lacks link_issues: %v", names)
 	}
 }
 

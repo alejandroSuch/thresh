@@ -50,6 +50,7 @@ type rawIssue struct {
 			Key string `json:"key"`
 		} `json:"parent"`
 		Issuelinks []struct {
+			ID   string `json:"id"`
 			Type struct {
 				Name    string `json:"name"`
 				Outward string `json:"outward"`
@@ -245,19 +246,37 @@ func (j *Jira) doTransition(key, transitionID string) error {
 	return err
 }
 
+// linkIssues creates a Blocks link where blocker blocks blocked.
+func (j *Jira) linkIssues(blocker, blocked string) error {
+	_, err := j.do(http.MethodPost, "/rest/api/3/issueLink", map[string]any{
+		"type":         map[string]string{"name": "Blocks"},
+		"inwardIssue":  map[string]string{"key": blocker}, // Jira links the request's inwardIssue to its outwardIssue with the outward verb
+		"outwardIssue": map[string]string{"key": blocked},
+	})
+	return err
+}
+
 type IssueRow struct {
-	Key            string `json:"key"`
-	Summary        string `json:"summary"`
-	Type           string `json:"type"`
-	Status         string `json:"status"`
-	StatusCategory string `json:"statusCategory"`
-	Updated        string `json:"updated"`
-	URL            string `json:"url"`
-	Parent         string `json:"parent,omitempty"`
+	Key            string      `json:"key"`
+	Summary        string      `json:"summary"`
+	Type           string      `json:"type"`
+	Status         string      `json:"status"`
+	StatusCategory string      `json:"statusCategory"`
+	Updated        string      `json:"updated"`
+	URL            string      `json:"url"`
+	Parent         string      `json:"parent,omitempty"`
+	Links          []IssueLink `json:"links,omitempty"`
+}
+
+// IssueLink is a Blocks link seen from the row's issue: direction is "blocks" or "blocked_by".
+type IssueLink struct {
+	ID        string `json:"id"`
+	Direction string `json:"direction"`
+	Key       string `json:"key"`
 }
 
 func (j *Jira) searchIssues(jql string, limit int) ([]IssueRow, error) {
-	raws, err := j.searchN(jql, []string{"summary", "status", "issuetype", "updated", "parent"}, limit)
+	raws, err := j.searchN(jql, []string{"summary", "status", "issuetype", "updated", "parent", "issuelinks"}, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -278,6 +297,14 @@ func (j *Jira) searchIssues(jql string, limit int) ([]IssueRow, error) {
 		}
 		if r.Fields.Parent != nil {
 			row.Parent = r.Fields.Parent.Key
+		}
+		for _, l := range r.Fields.Issuelinks {
+			switch {
+			case l.OutwardIssue != nil && strings.EqualFold(l.Type.Outward, "blocks"):
+				row.Links = append(row.Links, IssueLink{ID: l.ID, Direction: "blocks", Key: l.OutwardIssue.Key})
+			case l.InwardIssue != nil && strings.EqualFold(l.Type.Inward, "is blocked by"):
+				row.Links = append(row.Links, IssueLink{ID: l.ID, Direction: "blocked_by", Key: l.InwardIssue.Key})
+			}
 		}
 		out = append(out, row)
 	}
