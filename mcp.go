@@ -22,7 +22,7 @@ const mcpProtocolVersion = "2025-06-18"
 // `llm` option (i.e. only when the order still needs a semantic pass).
 const mcpInstructions = "thresh discovers and ranks the pending, actionable Jira issues for a scope. " +
 	"Typical flow: call discover_backlog with a scope (e.g. ABC-123), re-rank, then act via " +
-	"assign_issue / list_transitions / transition_issue / comment_issue. " +
+	"assign_issue / list_transitions / transition_issue / comment_issue / link_issues. " +
 	"discover_backlog returns each issue with raw signals (status, ageDays, type, score) and its " +
 	"dependency links (blocks / blockedBy / relates). Called without `llm` it returns the cheap " +
 	"deterministic order and a rubric asking you to re-rank by impact in context. " +
@@ -190,7 +190,7 @@ func toolSchemas() []any {
 		},
 		map[string]any{
 			"name":        "search_issues",
-			"description": "Run a JQL query and return the matching issues unfiltered (done issues and parents kept) as a JSON array of key, summary, type, status, statusCategory, updated (RFC 3339), url and parent.",
+			"description": "Run a JQL query and return the matching issues unfiltered (done issues and parents kept) as a JSON array of key, summary, type, status, statusCategory, updated (RFC 3339), url, parent and links (the issue's Blocks links as id, direction blocks or blocked_by, and the other issue's key; omitted when none).",
 			"inputSchema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -237,6 +237,18 @@ func toolSchemas() []any {
 					"transitionId": str("transition id from list_transitions"),
 				},
 				"required": []any{"key", "transitionId"},
+			},
+		},
+		map[string]any{
+			"name":        "link_issues",
+			"description": "Create a Jira link of type Blocks where `blocker` blocks `blocked`.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"blocker": str("issue key that blocks, e.g. ABC-1"),
+					"blocked": str("issue key that is blocked, e.g. ABC-2"),
+				},
+				"required": []any{"blocker", "blocked"},
 			},
 		},
 		map[string]any{
@@ -427,6 +439,20 @@ func (s *mcpServer) dispatchTool(name string, args json.RawMessage) (map[string]
 		}
 		return toolText("commented on "+a.Key, false), nil
 
+	case "link_issues":
+		var a struct {
+			Blocker string `json:"blocker"`
+			Blocked string `json:"blocked"`
+		}
+		json.Unmarshal(args, &a)
+		if a.Blocker == "" || a.Blocked == "" {
+			return nil, fmt.Errorf("blocker and blocked are required")
+		}
+		if err := s.prov.linkIssues(a.Blocker, a.Blocked); err != nil {
+			return nil, err
+		}
+		return toolText("linked "+a.Blocker+" blocks "+a.Blocked, false), nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -443,11 +469,15 @@ func checkIDs(args json.RawMessage) error {
 		Key          *string  `json:"key"`
 		Keys         []string `json:"keys"`
 		TransitionID *string  `json:"transitionId"`
+		Blocker      *string  `json:"blocker"`
+		Blocked      *string  `json:"blocked"`
 	}
 	json.Unmarshal(args, &a)
 	keys := a.Keys
-	if a.Key != nil && *a.Key != "" {
-		keys = append(keys, *a.Key)
+	for _, k := range []*string{a.Key, a.Blocker, a.Blocked} {
+		if k != nil && *k != "" {
+			keys = append(keys, *k)
+		}
 	}
 	for _, k := range keys {
 		if !issueKey.MatchString(k) {

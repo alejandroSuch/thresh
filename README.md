@@ -150,12 +150,13 @@ Tools exposed:
 |---|---|---|
 | `discover_backlog` | Discover + rank the pending issues for a scope (JSON) plus per-issue signals and dependency links (`blocks`/`blockedBy`/`relates`). Args: `scope` (issue or project key) or `jql`, plus `llm`, `top`. | no |
 | `describe_issues` | Fetch the (truncated) descriptions of specific issues, to judge severity / foundational-ness when the title is ambiguous. Arg `keys` (array). | no |
-| `search_issues` | Run a JQL query and return the issues unfiltered (done and parents kept) as a JSON array. Args `jql`, `limit` (default 200, max 1000). | no |
+| `search_issues` | Run a JQL query and return the issues unfiltered (done and parents kept) as a JSON array; each row's `links` lists its Blocks links (`id`, `direction` `blocks`/`blocked_by`, `key`). Args `jql`, `limit` (default 200, max 1000). | no |
 | `find_users` | Search Jira accounts by name or email (up to 20); `emailAddress` only when Jira shows it. Arg `query`. | no |
 | `list_transitions` | List the workflow transitions available on an issue (with the target's status category in `ToCategory`). Arg `key`. | no |
 | `assign_issue` | Assign an issue to you (the configured identity). Arg `key`. | **yes** |
 | `transition_issue` | Move an issue through a transition. Args `key`, `transitionId`. | **yes** |
 | `comment_issue` | Add a plain-text comment. Args `key`, `text`. | **yes** |
+| `link_issues` | Create a Blocks link where `blocker` blocks `blocked`. Args `blocker`, `blocked`. | **yes** |
 
 Server flags (put them in `args`):
 
@@ -177,7 +178,7 @@ Concrete example: a read-only thresh (discovery + transition listing, no writes)
 }
 ```
 
-Drop `--tools` for the full set (adds `assign_issue` / `transition_issue` / `comment_issue`); drop `--no-llm` to let a `discover_backlog` call with `llm: true` run thresh's own tie-break (needs `THRESH_LLM_*`).
+Drop `--tools` for the full set (adds `assign_issue` / `transition_issue` / `comment_issue` / `link_issues`); drop `--no-llm` to let a `discover_backlog` call with `llm: true` run thresh's own tie-break (needs `THRESH_LLM_*`).
 
 You don't need the `--llm` tie-break here: the MCP caller is itself an LLM. Called **without** `llm`, `discover_backlog` returns the deterministic order plus the raw signals (status, ageDays, blocks, type, score) and attaches the impact rubric to the result, asking the model to re-rank in its own context (same rubric the `--llm` path uses). No `THRESH_LLM_*` keys, no extra API call. Pass `llm: true` only if you want thresh to run the re-rank itself (redundant from an LLM client); the rubric is then omitted because the order is already semantic. The `llm` flag is really for standalone CLI/TUI, where there is no model in the loop.
 
